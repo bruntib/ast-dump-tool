@@ -5,6 +5,7 @@ import json
 import shlex
 import subprocess
 import sys
+from multiprocessing import Pool
 from pathlib import Path
 
 def change_std(build_action: str, std: str):
@@ -41,7 +42,22 @@ def command_line_args():
         required=True,
         help="Output directory for the AST dump files")
 
+    parser.add_argument(
+        "-j", "--jobs",
+        type=int,
+        default=1,
+        help="Number of parallel jobs")
+
     return parser.parse_args()
+
+def run_dump_tool(param):
+    output, action = param
+    with open(output / Path(action["file"]).name, "w") as f:
+        print(action['file'])
+        subprocess.Popen(
+            ['ast-dump-tool', action["file"]],
+            cwd=action["directory"],
+            stdout=f).communicate()
 
 def main():
     args = command_line_args()
@@ -61,12 +77,10 @@ def main():
     with open(args.file.name, "w") as f:
         json.dump(build_actions, f, indent=2)
 
-    for action in build_actions:
-        with open(args.output / Path(action["file"]).name, "w") as f:
-            subprocess.Popen(
-                ['ast-dump-tool', action["file"]],
-                cwd=action["directory"],
-                stdout=f)
+    with Pool(processes=args.jobs) as pool:
+        pool.map(
+            run_dump_tool,
+            ((args.output, action) for action in build_actions))
 
 if __name__ == "__main__":
     main()
